@@ -40,6 +40,8 @@ export default function MeetingPage({
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [displayRoomName] = useState(roomName || roomId);
+  const [fullscreenStreamID, setFullscreenStreamID] = useState<string | null>(null);
+  const fullscreenCardRef = useRef<HTMLElement | null>(null);
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const videoElementsRef = useRef<Map<string, HTMLVideoElement>>(new Map());
@@ -268,6 +270,73 @@ export default function MeetingPage({
     navigator.clipboard.writeText(roomId);
   }, [roomId]);
 
+  // 切换全屏
+  const toggleFullscreen = useCallback(async (streamID: string) => {
+    if (fullscreenStreamID === streamID) {
+      // 退出全屏
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+        setFullscreenStreamID(null);
+      }
+    } else {
+      // 进入全屏 - 如果已经有全屏内容，先退出
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+
+      // 获取视频卡片元素并让其进入全屏
+      const videoCards = document.querySelectorAll('.video-card');
+      let targetCard: HTMLElement | null = null;
+      videoCards.forEach((card) => {
+        const remoteVideo = card.querySelector('video[autoplay]') as HTMLVideoElement;
+        if (remoteVideo && videoElementsRef.current.get(streamID) === remoteVideo) {
+          targetCard = card as HTMLElement;
+        }
+      });
+
+      // 也要检查是否是本地视频
+      if (!targetCard && localVideoRef.current) {
+        const localCard = localVideoRef.current.closest('.video-card') as HTMLElement;
+        if (localCard) {
+          targetCard = localCard;
+        }
+      }
+
+      if (targetCard) {
+        try {
+          fullscreenCardRef.current = targetCard;
+          await targetCard.requestFullscreen();
+          setFullscreenStreamID(streamID);
+        } catch (err) {
+          console.error('Failed to enter fullscreen:', err);
+        }
+      }
+    }
+  }, [fullscreenStreamID]);
+
+  // 监听全屏变化
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement) {
+        setFullscreenStreamID(null);
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
+  // 处理点击全屏内容退出全屏
+  const handleFullscreenClick = useCallback(() => {
+    if (fullscreenStreamID && document.fullscreenElement) {
+      document.exitFullscreen();
+      setFullscreenStreamID(null);
+    }
+  }, [fullscreenStreamID]);
+
   // 绑定视频元素到流
   useEffect(() => {
     remoteStreams.forEach((stream) => {
@@ -322,7 +391,10 @@ export default function MeetingPage({
         <div className="video-grid">
           {/* 本地屏幕共享预览 */}
           {isScreenSharing && (
-            <div className="video-card">
+            <div
+              className="video-card"
+              onClick={handleFullscreenClick}
+            >
               <video
                 ref={localVideoRef}
                 autoPlay
@@ -332,12 +404,26 @@ export default function MeetingPage({
               />
               <div className="video-label">{userName} (我)</div>
               <div className="screen-shared">共享中</div>
+              <button
+                className="fullscreen-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleFullscreen(userId + '_screen');
+                }}
+                title={fullscreenStreamID === userId + '_screen' ? '退出全屏' : '进入全屏'}
+              >
+                {fullscreenStreamID === userId + '_screen' ? '⛶' : '⛶'}
+              </button>
             </div>
           )}
 
           {/* 远端视频流 */}
           {remoteStreams.map((stream) => (
-            <div key={stream.streamID} className="video-card">
+            <div
+              key={stream.streamID}
+              className="video-card"
+              onClick={handleFullscreenClick}
+            >
               <video
                 ref={(el) => {
                   if (el) {
@@ -353,6 +439,16 @@ export default function MeetingPage({
               />
               <div className="video-label">{stream.userName}</div>
               <div className="screen-shared">共享中</div>
+              <button
+                className="fullscreen-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleFullscreen(stream.streamID);
+                }}
+                title={fullscreenStreamID === stream.streamID ? '退出全屏' : '进入全屏'}
+              >
+                {fullscreenStreamID === stream.streamID ? '⛶' : '⛶'}
+              </button>
             </div>
           ))}
 
