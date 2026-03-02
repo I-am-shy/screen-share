@@ -447,3 +447,42 @@
 .modal-card form {
   margin-top: 1.5rem;
 }
+
+/* Room empty warning */
+.room-empty-warning {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: #1a1a2e;
+  border-radius: 16px;
+  padding: 2rem;
+  min-width: 300px;
+  text-align: center;
+  border: 1px solid rgba(255, 71, 87, 0.3);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  z-index: 10001;
+  animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+  from {
+    transform: translate(-50%, -60%);
+    opacity: 0;
+  }
+  to {
+    transform: translate(-50%, -50%);
+    opacity: 1;
+  }
+}
+
+.room-empty-warning h3 {
+  color: #ff4757;
+  margin-top: 0;
+  font-size: 1.3rem;
+}
+
+.room-empty-warning p {
+  color: #888;
+  margin-bottom: 1.5rem;
+}

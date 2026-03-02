@@ -3,14 +3,13 @@ import { generateDefaultUsername, getStoredUser, saveStoredUser, clearStoredUser
 import MeetingPage from './pages/MeetingPage';
 import './App.css';
 
-type PageState = 'home' | 'create' | 'join' | 'meeting';
+type PageState = 'home' | 'join' | 'meeting';
 
 interface MeetingInfo {
   roomId: string;
   roomName: string;
   userId: string;
   userName: string;
-  isHost: boolean;
 }
 
 function App() {
@@ -26,23 +25,15 @@ function App() {
     }
   }, []);
 
-  const handleCreateRoom = useCallback((roomName: string, userName: string) => {
-    const roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const userId = `host_${roomId}_${Date.now()}`;
-    saveStoredUser({ username: userName, userId });
-    setMeetingInfo({ roomId, roomName, userId, userName, isHost: true });
-    setPage('meeting');
-  }, []);
-
-  const handleJoinRoom = useCallback((roomId: string, userName: string) => {
-    const userId = `user_${roomId}_${Date.now()}`;
+  // 加入房间（第一个用户自动成为房主）
+  const handleJoinRoom = useCallback((roomName: string, userName: string) => {
+    const userId = userName;
     saveStoredUser({ username: userName, userId });
     setMeetingInfo({
-      roomId: roomId.toUpperCase(),
-      roomName: roomId.toUpperCase(),
+      roomId: roomName.toUpperCase(),
+      roomName: roomName.toUpperCase(),
       userId,
       userName,
-      isHost: false,
     });
     setPage('meeting');
   }, []);
@@ -51,6 +42,12 @@ function App() {
     setMeetingInfo(null);
     setPage('home');
   }, []);
+
+  // 当房间空时自动退出
+  const handleRoomEmpty = useCallback(() => {
+    console.log('[App] Room is empty, auto-exiting');
+    handleLeaveMeeting();
+  }, [handleLeaveMeeting]);
 
   const handleLogout = useCallback(() => {
     clearStoredUser();
@@ -98,17 +95,9 @@ function App() {
       )}
       {page === 'home' && storedUser && (
         <HomePage
-          onCreateRoom={() => setPage('create')}
           onJoinRoom={() => setPage('join')}
           onLogout={handleLogout}
           defaultUsername={storedUser.username}
-        />
-      )}
-      {page === 'create' && (
-        <CreateRoomPage
-          defaultUserName={storedUser?.username || generateDefaultUsername()}
-          onBack={() => setPage('home')}
-          onCreate={handleCreateRoom}
         />
       )}
       {page === 'join' && (
@@ -124,9 +113,9 @@ function App() {
           roomName={meetingInfo.roomName}
           userId={meetingInfo.userId}
           userName={meetingInfo.userName}
-          isHost={meetingInfo.isHost}
           onLeave={handleLeaveMeeting}
           onUpdateTokenInvalid={showUpdateUserInfo}
+          onRoomEmpty={handleRoomEmpty}
         />
       )}
     </div>
@@ -134,12 +123,10 @@ function App() {
 }
 
 function HomePage({
-  onCreateRoom,
   onJoinRoom,
   onLogout,
   defaultUsername,
 }: {
-  onCreateRoom: () => void;
   onJoinRoom: () => void;
   onLogout: () => void;
   defaultUsername?: string;
@@ -151,51 +138,9 @@ function HomePage({
         <p className="subtitle">基于 ZEGO Express SDK 的实时屏幕共享应用</p>
         {defaultUsername && <p className="current-user">当前用户：{defaultUsername}</p>}
         <div className="button-group">
-          <button className="btn btn-primary" onClick={onCreateRoom}>创建房间</button>
-          <button className="btn btn-secondary" onClick={onJoinRoom}>加入房间</button>
+          <button className="btn btn-primary" onClick={onJoinRoom}>进入房间</button>
           {defaultUsername && <button className="btn btn-text" onClick={onLogout}>退出登录</button>}
         </div>
-      </div>
-    </div>
-  );
-}
-
-function CreateRoomPage({
-  defaultUserName,
-  onBack,
-  onCreate,
-}: {
-  defaultUserName: string;
-  onBack: () => void;
-  onCreate: (roomName: string, userName: string) => void;
-}) {
-  const [roomName, setRoomName] = useState('');
-  const [userName, setUserName] = useState(defaultUserName);
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (roomName.trim() && userName.trim()) {
-      onCreate(roomName.trim(), userName.trim());
-    }
-  };
-  return (
-    <div className="room-page">
-      <div className="room-card">
-        <h2>创建房间</h2>
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label>房间名称</label>
-            <input type="text" value={roomName} onChange={(e) => setRoomName(e.target.value)} placeholder="请输入房间名称，如：技术分享会" autoFocus />
-          </div>
-          <div className="form-group">
-            <label>用户名</label>
-            <input type="text" value={userName} onChange={(e) => setUserName(e.target.value)} placeholder="请输入用户名" />
-            <p className="form-hint">默认：{defaultUserName}</p>
-          </div>
-          <div className="form-actions">
-            <button type="button" className="btn btn-text" onClick={onBack}>返回</button>
-            <button type="submit" className="btn btn-primary">创建房间</button>
-          </div>
-        </form>
       </div>
     </div>
   );
@@ -208,33 +153,46 @@ function JoinRoomPage({
 }: {
   defaultUserName: string;
   onBack: () => void;
-  onJoin: (roomId: string, userName: string) => void;
+  onJoin: (roomName: string, userName: string) => void;
 }) {
-  const [roomId, setRoomId] = useState('');
+  const [roomName, setRoomName] = useState('');
   const [userName, setUserName] = useState(defaultUserName);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (roomId.trim() && userName.trim()) {
-      onJoin(roomId.trim(), userName.trim());
+    if (roomName.trim() && userName.trim()) {
+      onJoin(roomName.trim(), userName.trim());
     }
   };
+
   return (
     <div className="room-page">
       <div className="room-card">
-        <h2>加入房间</h2>
+        <h2>进入房间</h2>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label>房间号</label>
-            <input type="text" value={roomId} onChange={(e) => setRoomId(e.target.value.toUpperCase())} placeholder="请输入 6 位房间号" maxLength={6} autoFocus />
+            <label>房间名称</label>
+            <input
+              type="text"
+              value={roomName}
+              onChange={(e) => setRoomName(e.target.value)}
+              placeholder="请输入房间名称"
+              autoFocus
+            />
           </div>
           <div className="form-group">
             <label>用户名</label>
-            <input type="text" value={userName} onChange={(e) => setUserName(e.target.value)} placeholder="请输入用户名" />
+            <input
+              type="text"
+              value={userName}
+              onChange={(e) => setUserName(e.target.value)}
+              placeholder="请输入用户名"
+            />
             <p className="form-hint">默认：{defaultUserName}</p>
           </div>
           <div className="form-actions">
             <button type="button" className="btn btn-text" onClick={onBack}>返回</button>
-            <button type="submit" className="btn btn-primary">加入房间</button>
+            <button type="submit" className="btn btn-primary">进入房间</button>
           </div>
         </form>
       </div>
@@ -267,7 +225,13 @@ function LoginPage({
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label>用户名</label>
-            <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="请输入用户名" autoFocus />
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="请输入用户名"
+              autoFocus
+            />
           </div>
           <div className="form-actions">
             <button type="button" className="btn btn-text" onClick={onBack}>返回</button>
@@ -304,7 +268,13 @@ function UserInfoUpdateModal({
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label>用户名</label>
-            <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="请输入新用户名" autoFocus />
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="请输入新用户名"
+              autoFocus
+            />
           </div>
           <div className="form-actions">
             <button type="button" className="btn btn-secondary" onClick={onLogout}>退出登录</button>

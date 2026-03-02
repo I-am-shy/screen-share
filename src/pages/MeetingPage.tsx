@@ -7,9 +7,10 @@ interface MeetingPageProps {
   roomName: string;
   userId: string;
   userName: string;
-  isHost: boolean;
   onLeave: () => void;
   onUpdateTokenInvalid?: (userId: string, userName: string) => void;
+  // 当房间空时触发
+  onRoomEmpty?: () => void;
 }
 
 interface Participant {
@@ -30,13 +31,14 @@ export default function MeetingPage({
   roomName,
   userId,
   userName,
-  isHost,
   onLeave,
   onUpdateTokenInvalid,
+  onRoomEmpty,
 }: MeetingPageProps) {
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+  // 将当前用户放在成员列表最前面
   const [participants, setParticipants] = useState<Participant[]>([
-    { id: userId, name: userName, isHost, hasScreen: false },
+    { id: userId, name: userName, isHost: true, hasScreen: false },
   ]);
   const [remoteStreams, setRemoteStreams] = useState<RemoteStream[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +51,21 @@ export default function MeetingPage({
   const videoElementsRef = useRef<Map<string, HTMLVideoElement>>(new Map());
   const screenStreamRef = useRef<MediaStream | null>(null);
   const isInitializedRef = useRef(false);
+
+  // 监听房间空的自定义事件
+  useEffect(() => {
+    const handleRoomEmpty = () => {
+      console.log('[Room Empty] Custom event received');
+      if (onRoomEmpty) {
+        onRoomEmpty();
+      }
+    };
+
+    document.addEventListener('roomEmpty' as any, handleRoomEmpty);
+    return () => {
+      document.removeEventListener('roomEmpty' as any, handleRoomEmpty);
+    };
+  }, [onRoomEmpty]);
 
   // 初始化连接
   useEffect(() => {
@@ -107,18 +124,34 @@ export default function MeetingPage({
             const initialParticipants: Participant[] = receivedInitialUsers.map((user) => ({
               id: user.userID,
               name: user.userName || user.userID,
-              isHost: user.userID.includes('host_'),
+              isHost: false,
               hasScreen: false,
             }));
 
-            // 如果当前用户不在列表中（可能刚加入），添加自己
+            // 当前用户自动成为房主
+            const myParticipant: Participant = {
+              id: userId,
+              name: userName,
+              isHost: true,
+              hasScreen: false,
+            };
+
+            // 如果当前用户不在列表中（可能刚加入），添加自己到最前面
             if (!initialParticipants.some((p) => p.id === userId)) {
-              initialParticipants.push({
-                id: userId,
-                name: userName,
-                isHost: userId.includes('host_'),
-                hasScreen: false,
-              });
+              initialParticipants.push(myParticipant);
+            } else {
+              // 如果已经在列表中，更新为自己的角色
+              const index = initialParticipants.findIndex((p) => p.id === userId);
+              if (index !== -1) {
+                initialParticipants[index] = myParticipant;
+              }
+            }
+
+            // 将当前用户移到列表最前面
+            const myIndex = initialParticipants.findIndex((p) => p.id === userId);
+            if (myIndex !== -1) {
+              const [myParticipant] = initialParticipants.splice(myIndex, 1);
+              initialParticipants.unshift(myParticipant);
             }
 
             console.log('[onUserUpdate] Setting participants:', initialParticipants);
@@ -126,23 +159,74 @@ export default function MeetingPage({
             return;
           }
 
-          // 处理后续的用户更新（新用户加入）
+          // 处理后续的用户更新（新用户加入或离开）
           console.log('[onUserUpdate] Subsequent update - users:', users);
-          setParticipants((prev) => {
-            const prevIds = new Set(prev.map((p) => p.id));
-            const newUsers = users.filter((u) => !prevIds.has(u.userID));
 
+          // 如果收到的是空列表（房间被销毁或其他用户全部离开）
+          if (users.length === 0) {
+            // 只保留自己
+            setParticipants([
+              {
+                id: userId,
+                name: userName,
+                isHost: userId.startsWith('host_'),
+                hasScreen: false,
+              },
+            ]);
+            return;
+          }
+
+          setParticipants((prev) => {
+            const userIdsInRoom = new Set(users.map((u) => u.userID));
+
+            // 找出离开的用户（在 prev 中但不在当前 users 中）
+            const leftUsers = prev.filter((p) => !userIdsInRoom.has(p.id) && p.id !== userId);
+
+            // 找出新加入的用户
+            const newUsers = users.filter((u) => !prev.some((p) => p.id === u.userID));
+
+            // 过滤出仍在房间内的旧用户
+            const stillHere = prev.filter((p) => userIdsInRoom.has(p.id));
+
+            if (leftUsers.length > 0) {
+              console.log('[onUserUpdate] Users left:', leftUsers);
+            }
             if (newUsers.length > 0) {
               console.log('[onUserUpdate] New users detected:', newUsers);
-              return [...prev, ...newUsers.map((user) => ({
+            }
+
+            // 构建新的参与者列表：先添加当前用户到最前面
+            let updated: Participant[] = [];
+
+            // 找到当前的参与者信息
+            const myIndex = stillHere.findIndex((p) => p.id === userId);
+            if (myIndex !== -1) {
+              const [myParticipant] = stillHere.splice(myIndex, 1);
+              updated.push({ ...myParticipant, isHost: true }); // 确保自己是房主
+            } else {
+              // 如果不在列表中，添加自己为房主
+              updated.push({
+                id: userId,
+                name: userName,
+                isHost: true,
+                hasScreen: false,
+              });
+            }
+
+            // 添加其他用户
+            updated = [...updated, ...stillHere];
+
+            // 添加新用户到末尾
+            if (newUsers.length > 0) {
+              updated = [...updated, ...newUsers.map((user) => ({
                 id: user.userID,
                 name: user.userName || user.userID,
-                isHost: user.userID.includes('host_'),
+                isHost: false,
                 hasScreen: false,
               }))];
             }
 
-            return prev;
+            return updated;
           });
         };
 
@@ -152,9 +236,9 @@ export default function MeetingPage({
         zegoService.onStreamUpdate = (streams: StreamInfo[]) => {
           console.log('Streams updated:', streams);
 
-          // 更新远端流列表（排除自己的流）
+          // 更新远端流列表（排除自己的流） - 使用精确匹配
           const remote = streams.filter(
-            (s) => !s.userID.includes(userId) && s.type === 'screen'
+            (s) => s.userID !== userId && s.type === 'screen'
           );
 
           // 停止播放不在列表中的流 - 先查找哪些流需要从 DOM 中移除
@@ -169,19 +253,41 @@ export default function MeetingPage({
 
           setRemoteStreams(remote);
 
-          // 更新参与者屏幕共享状态
-          setParticipants((prev) => {
-            const updated = [...prev];
+          // 更新参与者屏幕共享状态（在 setRemoteStreams 之后执行）
+          const currentParticipantIds = new Set(participants.map(p => p.id));
+          const currentStreamUserIds = new Set(streams.map(s => s.userID));
 
-            streams.forEach((stream) => {
-              const participantIndex = updated.findIndex((p) => p.id === stream.userID);
-              if (participantIndex !== -1) {
-                updated[participantIndex] = {
-                  ...updated[participantIndex],
-                  hasScreen: stream.type === 'screen',
-                };
-              }
+          // 找出离开的用户（在 participants 中但没有流了）
+          const leftParticipants = Array.from(currentParticipantIds).filter(id =>
+            !currentStreamUserIds.has(id) && id !== userId
+          );
+
+          if (leftParticipants.length > 0) {
+            console.log('[Stream Check] Users without streams:', leftParticipants);
+
+            // 停止播放这些用户的流
+            leftParticipants.forEach(pId => {
+              zegoService.stopPlayingStream(`${pId}_screen`);
+              videoElementsRef.current.get(`${pId}_screen`)?.remove();
             });
+          }
+
+          // 更新参与者的 hasScreen 状态
+          setParticipants((prev) => {
+            const updated = prev.map((p) => {
+              const streamInfo = streams.find(s => s.userID === p.id);
+              if (streamInfo) {
+                return { ...p, hasScreen: streamInfo.type === 'screen' };
+              }
+              return p;
+            });
+
+            // 将当前用户移到列表最前面
+            const myIndex = updated.findIndex((p) => p.id === userId);
+            if (myIndex !== -1) {
+              const [myParticipant] = updated.splice(myIndex, 1);
+              updated.unshift(myParticipant);
+            }
 
             return updated;
           });
@@ -221,7 +327,7 @@ export default function MeetingPage({
       screenStreamRef.current.getTracks().forEach((track) => track.stop());
       screenStreamRef.current = null;
     }
-    await zegoService.leaveRoom();
+    await zegoService.logoutAndResetEngine();
   };
 
   // 开始屏幕共享
@@ -498,7 +604,7 @@ export default function MeetingPage({
                 </div>
                 <span className="participant-name">{participant.name}</span>
                 {participant.isHost && (
-                  <span className="participant-host">房主</span>
+                  <span className="participant-host">我</span>
                 )}
                 {participant.hasScreen && (
                   <span className="screen-indicator">🖥️</span>

@@ -45,10 +45,10 @@ class ZegoService {
         console.log('[ZEGO] Already logged in to room', roomId);
         return this.zg;
       }
-      // 如果已经在其他房间且已登录，需要先离开
+      // 如果已经在其他房间且已登录，需要先离开并重置引擎
       if (this.currentRoomId && !this.isLoggingIn) {
         console.log('[ZEGO] Switching from room', this.currentRoomId, 'to', roomId);
-        await this.zg.logoutRoom(this.currentRoomId);
+        await this.logoutAndResetEngine();
       }
     }
 
@@ -287,6 +287,25 @@ class ZegoService {
     } finally {
       // 不要完全销毁引擎，可以复用
       // this.zg = null;
+      this.currentRoomId = null;
+    }
+  }
+
+  // 登出并重置引擎（用于重新登录）
+  async logoutAndResetEngine(): Promise<void> {
+    if (!this.zg) return;
+
+    try {
+      await this.stopScreenShare();
+      if (this.currentRoomId) {
+        await this.zg.logoutRoom(this.currentRoomId);
+        this.initializedRooms.delete(this.currentRoomId);
+      }
+    } catch (error) {
+      console.error('Failed to logout from room:', error);
+    } finally {
+      await this.zg.destroyEngine();
+      this.zg = null;
       this.currentRoomId = null;
     }
   }
