@@ -9,6 +9,7 @@ interface MeetingPageProps {
   userName: string;
   isHost: boolean;
   onLeave: () => void;
+  onUpdateTokenInvalid?: (userId: string, userName: string) => void;
 }
 
 interface Participant {
@@ -31,6 +32,7 @@ export default function MeetingPage({
   userName,
   isHost,
   onLeave,
+  onUpdateTokenInvalid,
 }: MeetingPageProps) {
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [participants, setParticipants] = useState<Participant[]>([
@@ -68,6 +70,15 @@ export default function MeetingPage({
 
         if (!tokenResponse.ok) {
           const errText = await tokenResponse.text();
+
+          // Token 无效 (401/403) - 通知父组件显示更新弹窗
+          if ([401, 403].includes(tokenResponse.status)) {
+            if (onUpdateTokenInvalid) {
+              onUpdateTokenInvalid(userId, userName);
+            }
+            throw new Error('Token 已失效');
+          }
+
           throw new Error(`Failed to get token: ${errText}`);
         }
 
@@ -145,6 +156,17 @@ export default function MeetingPage({
           const remote = streams.filter(
             (s) => !s.userID.includes(userId) && s.type === 'screen'
           );
+
+          // 停止播放不在列表中的流 - 先查找哪些流需要从 DOM 中移除
+          videoElementsRef.current.forEach((videoEl, streamID) => {
+            if (!remote.some(s => s.streamID === streamID)) {
+              // 这个流不再存在，停止播放并清空视频
+              zegoService.stopPlayingStream(streamID);
+              videoEl.srcObject = null;
+              videoEl.pause();
+            }
+          });
+
           setRemoteStreams(remote);
 
           // 更新参与者屏幕共享状态
@@ -165,7 +187,6 @@ export default function MeetingPage({
           });
         };
 
-        // 登录后等待一小段时间让 roomUserUpdate 回调触发
         if (!initialUsersCallbackCalled) {
           await new Promise<void>((resolve) => {
             setTimeout(() => resolve(), 500);

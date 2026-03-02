@@ -30,6 +30,12 @@
   margin-bottom: 3rem;
 }
 
+.current-user {
+  color: #667eea;
+  font-size: 0.95rem;
+  margin-bottom: 2rem;
+}
+
 .button-group {
   display: flex;
   gap: 1rem;
@@ -141,7 +147,7 @@
 }
 
 .btn-text:hover {
-  color: #fff;
+  color: #ff4757;
 }
 
 .btn-danger {
@@ -387,4 +393,57 @@
   .button-group {
     flex-direction: column;
   }
+}
+
+/* Modal Overlay */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal-card {
+  background: #1a1a2e;
+  border-radius: 16px;
+  padding: 2rem;
+  width: 90%;
+  max-width: 400px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.modal-card h2 {
+  margin-top: 0;
+  color: #fff;
+  font-size: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.modal-card form {
+  margin-top: 1.5rem;
 }
