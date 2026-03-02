@@ -1,0 +1,414 @@
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { zegoService, type StreamInfo, type RoomUser } from '../services/zego';
+import './MeetingPage.css';
+
+interface MeetingPageProps {
+  roomId: string;
+  roomName: string;
+  userId: string;
+  userName: string;
+  isHost: boolean;
+  onLeave: () => void;
+}
+
+interface Participant {
+  id: string;
+  name: string;
+  isHost: boolean;
+  hasScreen: boolean;
+}
+
+interface RemoteStream {
+  streamID: string;
+  userID: string;
+  userName: string;
+}
+
+export default function MeetingPage({
+  roomId,
+  roomName,
+  userId,
+  userName,
+  isHost,
+  onLeave,
+}: MeetingPageProps) {
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [participants, setParticipants] = useState<Participant[]>([
+    { id: userId, name: userName, isHost, hasScreen: false },
+  ]);
+  const [remoteStreams, setRemoteStreams] = useState<RemoteStream[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [displayRoomName] = useState(roomName || roomId);
+
+  const localVideoRef = useRef<HTMLVideoElement>(null);
+  const videoElementsRef = useRef<Map<string, HTMLVideoElement>>(new Map());
+  const screenStreamRef = useRef<MediaStream | null>(null);
+  const isInitializedRef = useRef(false);
+
+  // 初始化连接
+  useEffect(() => {
+    let mounted = true;
+
+    const initMeeting = async () => {
+      try {
+        setError(null);
+        setIsLoading(true);
+
+        const tokenServerUrl = import.meta.env.VITE_TOKEN_SERVER_URL || 'http://localhost:3000';
+
+        // 获取 Token
+        const tokenResponse = await fetch(`${tokenServerUrl}/token`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId }),
+        });
+
+        if (!tokenResponse.ok) {
+          const errText = await tokenResponse.text();
+          throw new Error(`Failed to get token: ${errText}`);
+        }
+
+        const { token } = await tokenResponse.json();
+
+        // 初始化 ZEGO SDK
+        const roomNameId = `room_${roomId}`;
+
+        console.log('Initializing meeting with:', { roomId, roomNameId, userId });
+
+        // 在 init 之前设置回调，确保能捕获 login 时的初始用户列表
+        let initialUsersCallbackCalled = false;
+        const receivedInitialUsers: RoomUser[] = [];
+
+        zegoService.onUserUpdate = (users: RoomUser[]) => {
+          console.log('[onUserUpdate] Users updated:', users);
+          console.log('[onUserUpdate] Current state - initialUsersCallbackCalled:', initialUsersCallbackCalled);
+
+          if (!initialUsersCallbackCalled) {
+            // 这是登录时触发的第一次回调，包含房间内所有用户
+            initialUsersCallbackCalled = true;
+            receivedInitialUsers.push(...users);
+            console.log('[onUserUpdate] First callback - receivedInitialUsers:', receivedInitialUsers);
+
+            // 构建初始参与者列表
+            const initialParticipants: Participant[] = receivedInitialUsers.map((user) => ({
+              id: user.userID,
+              name: user.userName || user.userID,
+              isHost: user.userID.includes('host_'),
+              hasScreen: false,
+            }));
+
+            // 如果当前用户不在列表中（可能刚加入），添加自己
+            if (!initialParticipants.some((p) => p.id === userId)) {
+              initialParticipants.push({
+                id: userId,
+                name: userName,
+                isHost: userId.includes('host_'),
+                hasScreen: false,
+              });
+            }
+
+            console.log('[onUserUpdate] Setting participants:', initialParticipants);
+            setParticipants(initialParticipants);
+            return;
+          }
+
+          // 处理后续的用户更新（新用户加入）
+          console.log('[onUserUpdate] Subsequent update - users:', users);
+          setParticipants((prev) => {
+            const prevIds = new Set(prev.map((p) => p.id));
+            const newUsers = users.filter((u) => !prevIds.has(u.userID));
+
+            if (newUsers.length > 0) {
+              console.log('[onUserUpdate] New users detected:', newUsers);
+              return [...prev, ...newUsers.map((user) => ({
+                id: user.userID,
+                name: user.userName || user.userID,
+                isHost: user.userID.includes('host_'),
+                hasScreen: false,
+              }))];
+            }
+
+            return prev;
+          });
+        };
+
+        await zegoService.init(userId, token, roomNameId);
+
+        // 设置流更新回调
+        zegoService.onStreamUpdate = (streams: StreamInfo[]) => {
+          console.log('Streams updated:', streams);
+
+          // 更新远端流列表（排除自己的流）
+          const remote = streams.filter(
+            (s) => !s.userID.includes(userId) && s.type === 'screen'
+          );
+          setRemoteStreams(remote);
+
+          // 更新参与者屏幕共享状态
+          setParticipants((prev) => {
+            const updated = [...prev];
+
+            streams.forEach((stream) => {
+              const participantIndex = updated.findIndex((p) => p.id === stream.userID);
+              if (participantIndex !== -1) {
+                updated[participantIndex] = {
+                  ...updated[participantIndex],
+                  hasScreen: stream.type === 'screen',
+                };
+              }
+            });
+
+            return updated;
+          });
+        };
+
+        // 登录后等待一小段时间让 roomUserUpdate 回调触发
+        if (!initialUsersCallbackCalled) {
+          await new Promise<void>((resolve) => {
+            setTimeout(() => resolve(), 500);
+          });
+        }
+
+        if (mounted) {
+          setIsLoading(false);
+          isInitializedRef.current = true;
+        }
+      } catch (err) {
+        console.error('Init error:', err);
+        if (mounted) {
+          setError(err instanceof Error ? err.message : 'Failed to initialize');
+          setIsLoading(false);
+        }
+      }
+    };
+
+    initMeeting();
+
+    return () => {
+      mounted = false;
+      isInitializedRef.current = false;
+      cleanup();
+    };
+  }, [roomId, userId]);
+
+  // 清理资源
+  const cleanup = async () => {
+    if (screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach((track) => track.stop());
+      screenStreamRef.current = null;
+    }
+    await zegoService.leaveRoom();
+  };
+
+  // 开始屏幕共享
+  const handleStartScreenShare = async () => {
+    try {
+      setError(null);
+      const streamID = `${userId}_screen`;
+
+      // 先设置状态为正在共享，这样预览视频才会渲染
+      setIsScreenSharing(true);
+
+      const stream = await zegoService.startScreenShare(streamID);
+
+      if (stream) {
+        screenStreamRef.current = stream;
+        // 绑定到本地预览视频 - 使用 displayStream 直接赋值
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = stream;
+          localVideoRef.current.muted = true; // 静音避免回声
+          localVideoRef.current.play().catch(console.error);
+        }
+      }
+
+      // 更新本地参与者状态
+      setParticipants((prev) =>
+        prev.map((p) => (p.id === userId ? { ...p, hasScreen: true } : p))
+      );
+    } catch (err) {
+      console.error('Screen share error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to start screen sharing');
+      setIsScreenSharing(false);
+    }
+  };
+
+  // 停止屏幕共享
+  const handleStopScreenShare = async () => {
+    try {
+      await zegoService.stopScreenShare();
+
+      // 清除本地预览
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = null;
+      }
+
+      setIsScreenSharing(false);
+
+      // 更新本地参与者状态
+      setParticipants((prev) =>
+        prev.map((p) => (p.id === userId ? { ...p, hasScreen: false } : p))
+      );
+    } catch (err) {
+      console.error('Stop screen share error:', err);
+    }
+  };
+
+  // 离开房间
+  const handleLeave = async () => {
+    if (isScreenSharing) {
+      await handleStopScreenShare();
+    }
+    await cleanup();
+    onLeave();
+  };
+
+  // 复制房间号
+  const copyRoomId = useCallback(() => {
+    navigator.clipboard.writeText(roomId);
+  }, [roomId]);
+
+  // 绑定视频元素到流
+  useEffect(() => {
+    remoteStreams.forEach((stream) => {
+      const videoEl = videoElementsRef.current.get(stream.streamID);
+      if (videoEl) {
+        zegoService.playStream(stream.streamID, videoEl);
+      }
+    });
+  }, [remoteStreams]);
+
+  if (isLoading) {
+    return (
+      <div className="meeting-page">
+        <div className="status-message">
+          <p>正在加入房间...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="meeting-page">
+        <div className="status-message">
+          <p className="error">错误：{error}</p>
+          <button className="btn btn-secondary" onClick={handleLeave}>
+            返回
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="meeting-page">
+      <header className="meeting-header">
+        <div className="room-info">
+          <div>
+            <span className="room-id" title="点击复制" onClick={copyRoomId}>
+              {roomId}
+            </span>
+            {displayRoomName && displayRoomName !== roomId && <span className="room-name"> · {displayRoomName}</span>}
+          </div>
+          <span className="user-info">{userName}</span>
+        </div>
+        <button className="btn btn-danger" onClick={handleLeave}>
+          离开房间
+        </button>
+      </header>
+
+      <main className="meeting-content">
+        <div className="video-grid">
+          {/* 本地屏幕共享预览 */}
+          {isScreenSharing && (
+            <div className="video-card">
+              <video
+                ref={localVideoRef}
+                autoPlay
+                playsInline
+                muted
+                className="local-video"
+              />
+              <div className="video-label">{userName} (我)</div>
+              <div className="screen-shared">共享中</div>
+            </div>
+          )}
+
+          {/* 远端视频流 */}
+          {remoteStreams.map((stream) => (
+            <div key={stream.streamID} className="video-card">
+              <video
+                ref={(el) => {
+                  if (el) {
+                    videoElementsRef.current.set(stream.streamID, el);
+                    zegoService.playStream(stream.streamID, el);
+                  } else {
+                    videoElementsRef.current.delete(stream.streamID);
+                  }
+                }}
+                autoPlay
+                playsInline
+                className="remote-video"
+              />
+              <div className="video-label">{stream.userName}</div>
+              <div className="screen-shared">共享中</div>
+            </div>
+          ))}
+
+          {/* 空状态提示 */}
+          {!isScreenSharing && remoteStreams.length === 0 && (
+            <div className="status-message">
+              <p>暂无屏幕共享</p>
+              <p style={{ fontSize: '0.9rem', color: '#666' }}>
+                点击右侧"开始共享"按钮分享你的屏幕
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* 侧边栏 */}
+        <aside className="sidebar">
+          <div className="sidebar-header">
+            参与者 ({participants.length})
+          </div>
+
+          <div className="participant-list">
+            {participants.map((participant) => (
+              <div key={participant.id} className="participant-item">
+                <div className="avatar">
+                  {participant.name.charAt(0).toUpperCase()}
+                </div>
+                <span className="participant-name">{participant.name}</span>
+                {participant.isHost && (
+                  <span className="participant-host">房主</span>
+                )}
+                {participant.hasScreen && (
+                  <span className="screen-indicator">🖥️</span>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div className="share-section">
+            {!isScreenSharing ? (
+              <button
+                className="share-btn primary"
+                onClick={handleStartScreenShare}
+              >
+                🖥️ 开始共享
+              </button>
+            ) : (
+              <button
+                className="share-btn active"
+                onClick={handleStopScreenShare}
+              >
+                ⏹️ 停止共享
+              </button>
+            )}
+          </div>
+        </aside>
+      </main>
+    </div>
+  );
+}

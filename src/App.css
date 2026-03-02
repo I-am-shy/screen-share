@@ -1,0 +1,390 @@
+.app {
+  min-height: 100vh;
+}
+
+/* Home Page */
+.home-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+}
+
+.home-content {
+  text-align: center;
+  padding: 2rem;
+}
+
+.home-content h1 {
+  font-size: 3rem;
+  margin-bottom: 0.5rem;
+  background: linear-gradient(90deg, #00d9ff, #00ff88);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.subtitle {
+  color: #888;
+  margin-bottom: 3rem;
+}
+
+.button-group {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+}
+
+/* Room Page */
+.room-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+}
+
+.room-card {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 16px;
+  padding: 2.5rem;
+  width: 100%;
+  max-width: 400px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.room-card h2 {
+  text-align: center;
+  margin-bottom: 2rem;
+  font-size: 1.5rem;
+}
+
+.form-group {
+  margin-bottom: 1.5rem;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: #aaa;
+  font-size: 0.9rem;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+  font-size: 1rem;
+  transition: border-color 0.2s;
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: #00d9ff;
+}
+
+.form-group input::placeholder {
+  color: #666;
+}
+
+.form-hint {
+  font-size: 0.8rem;
+  color: #666;
+  margin-top: 0.25rem;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+/* Buttons */
+.btn {
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+}
+
+.btn-primary {
+  background: linear-gradient(90deg, #00d9ff, #00ff88);
+  color: #1a1a2e;
+  font-weight: 600;
+}
+
+.btn-primary:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.btn-text {
+  background: transparent;
+  color: #888;
+}
+
+.btn-text:hover {
+  color: #fff;
+}
+
+.btn-danger {
+  background: #ff4757;
+  color: #fff;
+}
+
+.btn-danger:hover {
+  background: #ff3344;
+}
+
+/* Meeting Page */
+.meeting-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.meeting-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  background: rgba(0, 0, 0, 0.3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.room-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.room-id {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-family: monospace;
+  font-size: 1.1rem;
+  letter-spacing: 2px;
+}
+
+.room-name {
+  color: #00d9ff;
+  font-size: 0.9rem;
+}
+
+.user-info {
+  color: #888;
+  font-size: 0.9rem;
+}
+
+.meeting-content {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* Video Grid */
+.video-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 1rem;
+  padding: 1rem;
+  overflow: auto;
+}
+
+.video-card {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+  aspect-ratio: 16 / 9;
+}
+
+.video-card video,
+.video-card .video-placeholder {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.video-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.05);
+  color: #666;
+  font-size: 1.2rem;
+}
+
+.video-label {
+  position: absolute;
+  bottom: 0.75rem;
+  left: 0.75rem;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.screen-shared {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  background: #00ff88;
+  color: #1a1a2e;
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+/* Sidebar */
+.sidebar {
+  width: 300px;
+  background: rgba(0, 0, 0, 0.2);
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-header {
+  padding: 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  font-weight: 600;
+}
+
+.participant-list {
+  flex: 1;
+  overflow: auto;
+  padding: 0.5rem;
+}
+
+.participant-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 8px;
+  margin-bottom: 0.25rem;
+}
+
+.participant-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #00d9ff, #00ff88);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #1a1a2e;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.participant-name {
+  flex: 1;
+  font-size: 0.9rem;
+}
+
+.participant-host {
+  font-size: 0.75rem;
+  color: #00ff88;
+}
+
+.share-section {
+  padding: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.share-btn {
+  width: 100%;
+  padding: 1rem;
+  border-radius: 8px;
+  border: none;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.share-btn.primary {
+  background: linear-gradient(90deg, #00d9ff, #00ff88);
+  color: #1a1a2e;
+}
+
+.share-btn.primary:hover {
+  opacity: 0.9;
+}
+
+.share-btn.active {
+  background: #ff4757;
+  color: #fff;
+}
+
+.share-btn.active:hover {
+  background: #ff3344;
+}
+
+.share-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Meeting Footer */
+.meeting-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.3);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Status message */
+.status-message {
+  text-align: center;
+  padding: 2rem;
+  color: #888;
+}
+
+.status-message p {
+  margin-bottom: 0.5rem;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .video-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    width: 200px;
+  }
+
+  .button-group {
+    flex-direction: column;
+  }
+}
