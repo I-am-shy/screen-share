@@ -30,6 +30,10 @@ jobs:
 
       - name: Build
         run: bun run build
+        env:
+          VITE_ZEGO_APP_ID: ${{ secrets.VITE_ZEGO_APP_ID }}
+          VITE_ZEGO_SERVER_URL: ${{ secrets.VITE_ZEGO_SERVER_URL }}
+          VITE_TOKEN_SERVER_URL: ${{ secrets.VITE_TOKEN_SERVER_URL }}
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
