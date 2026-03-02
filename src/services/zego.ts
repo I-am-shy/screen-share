@@ -195,8 +195,12 @@ class ZegoService {
         screen: {
           audio: true,
           videoQuality: 2,
+          videoOptimizationMode: "motion"  // 流畅模式
         },
       });
+
+      // 开启硬件编码
+      await this.zg.enableHardwareEncoder(true);
 
       // 将 displayStream 的 tracks 添加到推流对象
       displayStream.getTracks().forEach((track) => {
