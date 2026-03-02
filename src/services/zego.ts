@@ -81,7 +81,7 @@ class ZegoService {
 
     // 监听房间用户更新
     this.zg.on('roomUserUpdate', (_roomId, updateType, userList) => {
-      console.log('roomUserUpdate', updateType, userList);
+      console.log('[ZEGO] roomUserUpdate triggered:', { _roomId, updateType, userList });
 
       const users = userList.map((user) => ({
         userID: (user as any).userID || (user as any).id,
@@ -89,7 +89,10 @@ class ZegoService {
       })) as RoomUser[];
 
       if (this.onUserUpdate) {
+        console.log('[ZEGO] Calling onUserUpdate with:', users);
         this.onUserUpdate(users);
+      } else {
+        console.warn('[ZEGO] WARNING: onUserUpdate callback not set!');
       }
     });
 
@@ -272,26 +275,27 @@ class ZegoService {
     this.zg.stopPlayingStream(streamID);
   }
 
-  // 离开房间
+  // 离开房间（不销毁引擎，让 SDK 自动发送离开通知）
   async leaveRoom(): Promise<void> {
     if (!this.zg) return;
 
     try {
       await this.stopScreenShare();
       if (this.currentRoomId) {
+        // 使用 logoutRoom 离开房间，这会触发 roomUserUpdate 事件给其他成员
         await this.zg.logoutRoom(this.currentRoomId);
         this.initializedRooms.delete(this.currentRoomId);
+        console.log('[ZEGO] Left room:', this.currentRoomId);
       }
     } catch (error) {
       console.error('Failed to leave room:', error);
     } finally {
-      // 不要完全销毁引擎，可以复用
-      // this.zg = null;
+      // 只重置 roomId，不销毁引擎
       this.currentRoomId = null;
     }
   }
 
-  // 登出并重置引擎（用于重新登录）
+  // 登出并重置引擎（仅用于切换房间时使用）
   async logoutAndResetEngine(): Promise<void> {
     if (!this.zg) return;
 

@@ -169,7 +169,7 @@ export default function MeetingPage({
               {
                 id: userId,
                 name: userName,
-                isHost: userId.startsWith('host_'),
+                isHost: true,
                 hasScreen: false,
               },
             ]);
@@ -189,7 +189,8 @@ export default function MeetingPage({
             const stillHere = prev.filter((p) => userIdsInRoom.has(p.id));
 
             if (leftUsers.length > 0) {
-              console.log('[onUserUpdate] Users left:', leftUsers);
+              console.log('[onUserUpdate] USERS LEFT:', leftUsers);
+              console.log('[onUserUpdate] User IDs in room:', Array.from(userIdsInRoom));
             }
             if (newUsers.length > 0) {
               console.log('[onUserUpdate] New users detected:', newUsers);
@@ -198,22 +199,15 @@ export default function MeetingPage({
             // 构建新的参与者列表：先添加当前用户到最前面
             let updated: Participant[] = [];
 
-            // 找到当前的参与者信息
-            const myIndex = stillHere.findIndex((p) => p.id === userId);
-            if (myIndex !== -1) {
-              const [myParticipant] = stillHere.splice(myIndex, 1);
-              updated.push({ ...myParticipant, isHost: true }); // 确保自己是房主
-            } else {
-              // 如果不在列表中，添加自己为房主
-              updated.push({
-                id: userId,
-                name: userName,
-                isHost: true,
-                hasScreen: false,
-              });
-            }
+            // 添加自己为房主（确保总是显示）
+            updated.push({
+              id: userId,
+              name: userName,
+              isHost: true,
+              hasScreen: false,
+            });
 
-            // 添加其他用户
+            // 添加其他用户（保留他们原来的状态）
             updated = [...updated, ...stillHere];
 
             // 添加新用户到末尾
@@ -327,7 +321,7 @@ export default function MeetingPage({
       screenStreamRef.current.getTracks().forEach((track) => track.stop());
       screenStreamRef.current = null;
     }
-    await zegoService.logoutAndResetEngine();
+    await zegoService.leaveRoom();
   };
 
   // 开始屏幕共享
