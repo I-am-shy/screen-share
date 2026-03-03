@@ -178,9 +178,9 @@ class ZegoService {
       // 使用 getDisplayMedia API 获取屏幕共享流（只会触发一次系统对话框）
       const displayStream = await navigator.mediaDevices.getDisplayMedia({
         video: {
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-          frameRate: { ideal: 15 },
+          width: { ideal: 1440 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 60 },
         },
         audio: true,
       });
