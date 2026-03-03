@@ -194,8 +194,11 @@ class ZegoService {
       const publishingStream = await this.zg.createStream({
         screen: {
           audio: true,
-          videoQuality: 2,
-          videoOptimizationMode: "motion"  // 流畅模式
+          videoQuality: 1,
+          videoOptimizationMode: "motion",  // 流畅模式
+          frameRate: {
+            ideal: 60
+          },
         },
       });
 
