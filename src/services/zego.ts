@@ -21,7 +21,8 @@ export type UpdateType = 'ADD' | 'DELETE' | 'COMMON';
 
 class ZegoService {
   private zg: ZegoExpressEngine | null = null;
-  private screenStream: MediaStream | null = null;
+  private screenStream: MediaStream | null = null;      // getDisplayMedia 获取的原始流
+  private publishingStream: MediaStream | null = null;   // createStream 创建的推流对象
   private currentRoomId: string | null = null;
   private localStreamID: string | null = null;
   private localStream: MediaStream | null = null;
@@ -180,9 +181,9 @@ class ZegoService {
       // 使用 getDisplayMedia API 获取屏幕共享流（只会触发一次系统对话框）
       const displayStream = await navigator.mediaDevices.getDisplayMedia({
         video: {
-          width: { ideal: 1440 },
-          height: { ideal: 720 },
-          frameRate: { ideal: 60 },
+          width: { ideal: 1920, max: 1920 },
+          height: { ideal: 1080, max: 1080 },
+          frameRate: { ideal: 60,max: 60 },
         },
         audio: true,
       });
@@ -194,15 +195,15 @@ class ZegoService {
 
       // 创建推流对象
       const publishingStream = await this.zg.createStream({
-        screen: {
-          audio: true,
-          videoQuality: 1,
-          videoOptimizationMode: "motion",  // 流畅模式
-          frameRate: {
-            ideal: 60
-          },
-        },
+        custom:{
+          source: displayStream, // 使用 webAPI 采集的流
+          videoOptimizationMode: "motion", // 流畅模式
+          startBitrate: 'target'
+        }
       });
+
+      // 保存推流对象，用于停止时清理
+      this.publishingStream = publishingStream;
 
       // 开启硬件编码
       await this.zg.enableHardwareEncoder(true);
@@ -242,16 +243,25 @@ class ZegoService {
     if (!this.zg) return;
 
     try {
+      // 先停止推流
       if (this.localStreamID) {
         this.zg.stopPublishingStream(this.localStreamID);
         this.localStreamID = null;
       }
 
+      // 停止推流对象的所有轨道（createStream 创建的流）
+      if (this.publishingStream) {
+        this.publishingStream.getTracks().forEach((track) => track.stop());
+        this.publishingStream = null;
+      }
+
+      // 停止原始采集流的所有轨道（getDisplayMedia 获取的流）
       if (this.screenStream) {
         this.screenStream.getTracks().forEach((track) => track.stop());
         this.screenStream = null;
-        this.localStream = null;
       }
+
+      this.localStream = null;
 
       console.log('Screen sharing stopped');
     } catch (error) {
