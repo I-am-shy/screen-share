@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { zegoService, type StreamInfo, type RoomUser } from '../services/zego';
+import { zegoService, type StreamInfo, type RoomUser, type UpdateType } from '../services/zego';
 import './MeetingPage.css';
 
 interface MeetingPageProps {
@@ -168,8 +168,8 @@ export default function MeetingPage({
         let initialUsersCallbackCalled = false;
         const receivedInitialUsers: RoomUser[] = [];
 
-        zegoService.onUserUpdate = (users: RoomUser[]) => {
-          console.log('[onUserUpdate] Users updated:', users);
+        zegoService.onUserUpdate = (users: RoomUser[], updateType: UpdateType) => {
+          console.log('[onUserUpdate] Users updated:', users, 'updateType:', updateType);
           console.log('[onUserUpdate] Current state - initialUsersCallbackCalled:', initialUsersCallbackCalled);
 
           if (!initialUsersCallbackCalled) {
@@ -218,131 +218,116 @@ export default function MeetingPage({
           }
 
           // 处理后续的用户更新（新用户加入或离开）
-          console.log('[onUserUpdate] Subsequent update - users:', users);
-
-          // 如果收到的是空列表（房间被销毁或其他用户全部离开）
-          if (users.length === 0) {
-            // 只保留自己
-            setParticipants([
-              {
-                id: userId,
-                name: userName,
-                isHost: true,
-                hasScreen: false,
-              },
-            ]);
-            return;
-          }
+          console.log('[onUserUpdate] Subsequent update - users:', users, 'updateType:', updateType);
 
           setParticipants((prev) => {
-            const userIdsInRoom = new Set(users.map((u) => u.userID));
-
-            // 找出离开的用户（在 prev 中但不在当前 users 中）
-            const leftUsers = prev.filter((p) => !userIdsInRoom.has(p.id) && p.id !== userId);
-
-            // 找出新加入的用户
-            const newUsers = users.filter((u) => !prev.some((p) => p.id === u.userID));
-
-            // 过滤出仍在房间内的旧用户
-            const stillHere = prev.filter((p) => userIdsInRoom.has(p.id));
-
-            if (leftUsers.length > 0) {
-              console.log('[onUserUpdate] USERS LEFT:', leftUsers);
-              console.log('[onUserUpdate] User IDs in room:', Array.from(userIdsInRoom));
-            }
-            if (newUsers.length > 0) {
-              console.log('[onUserUpdate] New users detected:', newUsers);
+            // 处理用户离开
+            if (updateType === 'DELETE') {
+              const leavingUserIds = new Set(users.map((u) => u.userID));
+              console.log('[onUserUpdate] Users leaving:', Array.from(leavingUserIds));
+              return prev.filter((p) => !leavingUserIds.has(p.id) || p.id === userId);
             }
 
-            // 构建新的参与者列表：先添加当前用户到最前面
-            let updated: Participant[] = [];
+            // 处理用户加入 (ADD)
+            if (updateType === 'ADD') {
+              const newUsers = users.filter((u) => !prev.some((p) => p.id === u.userID));
 
-            // 添加自己为房主（确保总是显示）
-            updated.push({
-              id: userId,
-              name: userName,
-              isHost: true,
-              hasScreen: false,
-            });
+              if (newUsers.length > 0) {
+                console.log('[onUserUpdate] New users detected:', newUsers);
+                const updated = [...prev];
+                newUsers.forEach((user) => {
+                  if (!updated.some((p) => p.id === user.userID)) {
+                    updated.push({
+                      id: user.userID,
+                      name: user.userName || user.userID,
+                      isHost: false,
+                      hasScreen: false,
+                    });
+                  }
+                });
 
-            // 添加其他用户（保留他们原来的状态）
-            updated = [...updated, ...stillHere];
+                // 将当前用户移到列表最前面
+                const myIndex = updated.findIndex((p) => p.id === userId);
+                if (myIndex !== -1) {
+                  const [myParticipant] = updated.splice(myIndex, 1);
+                  updated.unshift(myParticipant);
+                }
 
-            // 添加新用户到末尾
-            if (newUsers.length > 0) {
-              updated = [...updated, ...newUsers.map((user) => ({
-                id: user.userID,
-                name: user.userName || user.userID,
-                isHost: false,
-                hasScreen: false,
-              }))];
+                return updated;
+              }
             }
 
-            return updated;
+            return prev;
           });
         };
 
         await zegoService.init(userId, token, roomNameId);
 
         // 设置流更新回调
-        zegoService.onStreamUpdate = (streams: StreamInfo[]) => {
-          console.log('Streams updated:', streams);
+        zegoService.onStreamUpdate = (streams: StreamInfo[], updateType: UpdateType) => {
+          console.log('Streams updated:', streams, 'updateType:', updateType);
 
-          // 更新远端流列表（排除自己的流） - 使用精确匹配
-          const remote = streams.filter(
-            (s) => s.userID !== userId && s.type === 'screen'
-          );
+          // 处理流删除（远端结束共享）
+          if (updateType === 'DELETE') {
+            const deletedStreamIds = new Set(streams.map((s) => s.streamID));
+            console.log('[onStreamUpdate] Streams being deleted:', Array.from(deletedStreamIds));
 
-          // 停止播放不在列表中的流 - 先查找哪些流需要从 DOM 中移除
-          videoElementsRef.current.forEach((videoEl, streamID) => {
-            if (!remote.some(s => s.streamID === streamID)) {
-              // 这个流不再存在，停止播放并清空视频
+            // 停止播放被删除的流
+            deletedStreamIds.forEach((streamID) => {
               zegoService.stopPlayingStream(streamID);
-              videoEl.srcObject = null;
-              videoEl.pause();
-            }
-          });
-
-          setRemoteStreams(remote);
-
-          // 更新参与者屏幕共享状态（在 setRemoteStreams 之后执行）
-          const currentParticipantIds = new Set(participants.map(p => p.id));
-          const currentStreamUserIds = new Set(streams.map(s => s.userID));
-
-          // 找出离开的用户（在 participants 中但没有流了）
-          const leftParticipants = Array.from(currentParticipantIds).filter(id =>
-            !currentStreamUserIds.has(id) && id !== userId
-          );
-
-          if (leftParticipants.length > 0) {
-            console.log('[Stream Check] Users without streams:', leftParticipants);
-
-            // 停止播放这些用户的流
-            leftParticipants.forEach(pId => {
-              zegoService.stopPlayingStream(`${pId}_screen`);
-              videoElementsRef.current.get(`${pId}_screen`)?.remove();
+              const videoEl = videoElementsRef.current.get(streamID);
+              if (videoEl) {
+                videoEl.srcObject = null;
+                videoEl.pause();
+                videoElementsRef.current.delete(streamID);
+              }
             });
+
+            // 清理 videoStats 中的数据
+            setVideoStats((prev) => {
+              const newMap = new Map(prev);
+              deletedStreamIds.forEach((streamID) => newMap.delete(streamID));
+              return newMap;
+            });
+
+            // 更新远端流列表，移除被删除的流
+            setRemoteStreams((prev) => prev.filter((s) => !deletedStreamIds.has(s.streamID)));
+
+            // 更新参与者的 hasScreen 状态
+            setParticipants((prev) => {
+              return prev.map((p) => {
+                const hasStream = streams.some((s) => s.userID === p.id);
+                return hasStream ? { ...p, hasScreen: false } : p;
+              });
+            });
+
+            return;
           }
 
-          // 更新参与者的 hasScreen 状态
-          setParticipants((prev) => {
-            const updated = prev.map((p) => {
-              const streamInfo = streams.find(s => s.userID === p.id);
-              if (streamInfo) {
-                return { ...p, hasScreen: streamInfo.type === 'screen' };
-              }
-              return p;
+          // 处理流添加（远端开始共享）
+          if (updateType === 'ADD') {
+            // 更新远端流列表，添加新的流
+            setRemoteStreams((prev) => {
+              const existingIds = new Set(prev.map((s) => s.streamID));
+              const newStreams = streams.filter(
+                (s) => s.userID !== userId && s.type === 'screen' && !existingIds.has(s.streamID)
+              );
+              return [...prev, ...newStreams];
             });
 
-            // 将当前用户移到列表最前面
-            const myIndex = updated.findIndex((p) => p.id === userId);
-            if (myIndex !== -1) {
-              const [myParticipant] = updated.splice(myIndex, 1);
-              updated.unshift(myParticipant);
-            }
+            // 更新参与者的 hasScreen 状态
+            setParticipants((prev) => {
+              return prev.map((p) => {
+                const streamInfo = streams.find((s) => s.userID === p.id);
+                if (streamInfo && streamInfo.type === 'screen') {
+                  return { ...p, hasScreen: true };
+                }
+                return p;
+              });
+            });
 
-            return updated;
-          });
+            return;
+          }
         };
 
         if (!initialUsersCallbackCalled) {

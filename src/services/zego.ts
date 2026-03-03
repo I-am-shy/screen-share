@@ -17,6 +17,8 @@ export interface RoomUser {
   userName: string;
 }
 
+export type UpdateType = 'ADD' | 'DELETE' | 'COMMON';
+
 class ZegoService {
   private zg: ZegoExpressEngine | null = null;
   private screenStream: MediaStream | null = null;
@@ -28,8 +30,8 @@ class ZegoService {
   private isLoggingIn: boolean = false; // 标记正在登录中
 
   // 回调
-  onStreamUpdate?: (streams: StreamInfo[]) => void;
-  onUserUpdate?: (users: RoomUser[]) => void;
+  onStreamUpdate?: (streams: StreamInfo[], updateType: UpdateType) => void;
+  onUserUpdate?: (users: RoomUser[], updateType: UpdateType) => void;
 
   // 初始化 SDK
   async init(userID: string, token: string, roomId: string): Promise<ZegoExpressEngine> {
@@ -75,7 +77,7 @@ class ZegoService {
       }) as StreamInfo);
 
       if (this.onStreamUpdate) {
-        this.onStreamUpdate(streams);
+        this.onStreamUpdate(streams, updateType as UpdateType);
       }
     });
 
@@ -89,8 +91,8 @@ class ZegoService {
       })) as RoomUser[];
 
       if (this.onUserUpdate) {
-        console.log('[ZEGO] Calling onUserUpdate with:', users);
-        this.onUserUpdate(users);
+        console.log('[ZEGO] Calling onUserUpdate with:', users, 'updateType:', updateType);
+        this.onUserUpdate(users, updateType as UpdateType);
       } else {
         console.warn('[ZEGO] WARNING: onUserUpdate callback not set!');
       }
