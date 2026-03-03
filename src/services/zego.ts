@@ -19,6 +19,18 @@ export interface RoomUser {
 
 export type UpdateType = 'ADD' | 'DELETE' | 'COMMON';
 
+export interface PublisherQualityStats {
+  videoFPS: number;
+  videoBitrate: number;
+  audioBitrate: number;
+}
+
+export interface PlayerQualityStats {
+  videoFPS: number;
+  videoBitrate: number;
+  audioBitrate: number;
+}
+
 class ZegoService {
   private zg: ZegoExpressEngine | null = null;
   private screenStream: MediaStream | null = null;      // getDisplayMedia 获取的原始流
@@ -33,6 +45,8 @@ class ZegoService {
   // 回调
   onStreamUpdate?: (streams: StreamInfo[], updateType: UpdateType) => void;
   onUserUpdate?: (users: RoomUser[], updateType: UpdateType) => void;
+  onPublisherQualityUpdate?: (streamID: string, stats: PublisherQualityStats) => void;
+  onPlayerQualityUpdate?: (streamID: string, stats: PlayerQualityStats) => void;
 
   // 初始化 SDK
   async init(userID: string, token: string, roomId: string): Promise<ZegoExpressEngine> {
@@ -96,6 +110,30 @@ class ZegoService {
         this.onUserUpdate(users, updateType as UpdateType);
       } else {
         console.warn('[ZEGO] WARNING: onUserUpdate callback not set!');
+      }
+    });
+
+    // 监听推流质量统计（获取本地推流实时帧率）
+    (this.zg as any).on('publisherQualityUpdate', (streamID: string, stats: any) => {
+      const qualityStats: PublisherQualityStats = {
+        videoFPS: stats.videoCaptureFPS || stats.videoEncodeFPS || 0,
+        videoBitrate: stats.videoBitrate || 0,
+        audioBitrate: stats.audioBitrate || 0,
+      };
+      if (this.onPublisherQualityUpdate) {
+        this.onPublisherQualityUpdate(streamID, qualityStats);
+      }
+    });
+
+    // 监听拉流质量统计（获取远端流实时帧率）
+    (this.zg as any).on('playerQualityUpdate', (streamID: string, stats: any) => {
+      const qualityStats: PlayerQualityStats = {
+        videoFPS: stats.videoDecodeFPS || stats.videoReceiveFPS || 0,
+        videoBitrate: stats.videoBitrate || 0,
+        audioBitrate: stats.audioBitrate || 0,
+      };
+      if (this.onPlayerQualityUpdate) {
+        this.onPlayerQualityUpdate(streamID, qualityStats);
       }
     });
 

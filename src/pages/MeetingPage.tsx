@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { zegoService, type StreamInfo, type RoomUser, type UpdateType } from '../services/zego';
+import { zegoService, type StreamInfo, type RoomUser, type UpdateType, type PublisherQualityStats, type PlayerQualityStats } from '../services/zego';
 import './MeetingPage.css';
 
 interface MeetingPageProps {
@@ -29,7 +29,8 @@ interface RemoteStream {
 interface VideoStats {
   width: number;
   height: number;
-  frameRate?: number;
+  frameRate?: number;      // 从 track.getSettings() 获取（静态）
+  realtimeFPS?: number;    // 从 publisherQualityUpdate 获取（实时）
 }
 
 export default function MeetingPage({
@@ -263,6 +264,32 @@ export default function MeetingPage({
 
         await zegoService.init(userId, token, roomNameId);
 
+        // 设置推流质量统计回调（本地推流实时帧率）
+        zegoService.onPublisherQualityUpdate = (streamID: string, stats: PublisherQualityStats) => {
+          setVideoStats((prev) => {
+            const newMap = new Map(prev);
+            const existing = newMap.get(streamID) || { width: 0, height: 0 };
+            newMap.set(streamID, {
+              ...existing,
+              realtimeFPS: stats.videoFPS,
+            });
+            return newMap;
+          });
+        };
+
+        // 设置拉流质量统计回调（远端流实时帧率）
+        zegoService.onPlayerQualityUpdate = (streamID: string, stats: PlayerQualityStats) => {
+          setVideoStats((prev) => {
+            const newMap = new Map(prev);
+            const existing = newMap.get(streamID) || { width: 0, height: 0 };
+            newMap.set(streamID, {
+              ...existing,
+              realtimeFPS: stats.videoFPS,
+            });
+            return newMap;
+          });
+        };
+
         // 设置流更新回调
         zegoService.onStreamUpdate = (streams: StreamInfo[], updateType: UpdateType) => {
           console.log('Streams updated:', streams, 'updateType:', updateType);
@@ -354,6 +381,9 @@ export default function MeetingPage({
     return () => {
       mounted = false;
       isInitializedRef.current = false;
+      // 清理回调
+      zegoService.onPublisherQualityUpdate = undefined;
+      zegoService.onPlayerQualityUpdate = undefined;
       cleanup();
     };
   }, [roomId, userId]);
@@ -569,8 +599,10 @@ export default function MeetingPage({
               <div className="video-stats">
                 {(() => {
                   const stats = videoStats.get(`${userId}_screen`);
-                  if (!stats || !stats.frameRate) return null;
-                  return `${stats.frameRate.toFixed(0)}fps`;
+                  // 优先显示实时帧率
+                  const fps = stats?.realtimeFPS ?? stats?.frameRate;
+                  if (!fps) return null;
+                  return `${fps.toFixed(0)}fps`;
                 })()}
               </div>
               <div className="video-label">{userName} (我)</div>
