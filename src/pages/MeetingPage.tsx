@@ -26,6 +26,12 @@ interface RemoteStream {
   userName: string;
 }
 
+interface VideoStats {
+  width: number;
+  height: number;
+  frameRate?: number;
+}
+
 export default function MeetingPage({
   roomId,
   roomName,
@@ -46,11 +52,63 @@ export default function MeetingPage({
   const [displayRoomName] = useState(roomName || roomId);
   const [fullscreenStreamID, setFullscreenStreamID] = useState<string | null>(null);
   const fullscreenCardRef = useRef<HTMLElement | null>(null);
+  const [videoStats, setVideoStats] = useState<Map<string, VideoStats>>(new Map());
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const videoElementsRef = useRef<Map<string, HTMLVideoElement>>(new Map());
   const screenStreamRef = useRef<MediaStream | null>(null);
   const isInitializedRef = useRef(false);
+
+  // 获取视频流的统计信息（分辨率和帧率）
+  const updateVideoStats = useCallback((streamID: string, videoEl: HTMLVideoElement | null) => {
+    if (!videoEl) return;
+
+    const updateStats = () => {
+      try {
+        const stream = videoEl.srcObject as MediaStream;
+        if (!stream) return;
+
+        const videoTrack = stream.getVideoTracks()?.[0];
+        if (!videoTrack) return;
+
+        const settings = videoTrack.getSettings();
+        if (settings) {
+          const stats: VideoStats = {
+            width: settings.width ?? videoEl.videoWidth,
+            height: settings.height ?? videoEl.videoHeight,
+            frameRate: settings.frameRate as number | undefined,
+          };
+          setVideoStats((prev) => {
+            const newMap = new Map(prev);
+            newMap.set(streamID, stats);
+            return newMap;
+          });
+        }
+      } catch (err) {
+        console.error('Failed to get video stats:', err);
+      }
+    };
+
+    // 首次更新
+    updateStats();
+
+    // 监听元数据加载和尺寸变化
+    videoEl.addEventListener('loadedmetadata', updateStats);
+    videoEl.addEventListener('resize', updateStats);
+
+    return () => {
+      videoEl.removeEventListener('loadedmetadata', updateStats);
+      videoEl.removeEventListener('resize', updateStats);
+    };
+  }, []);
+
+  // 监听本地视频元素，获取统计信息
+  useEffect(() => {
+    if (localVideoRef.current && isScreenSharing) {
+      const streamID = `${userId}_screen`;
+      updateVideoStats(streamID, localVideoRef.current);
+    }
+  }, [isScreenSharing, userId, updateVideoStats]);
 
   // 监听房间空的自定义事件
   useEffect(() => {
@@ -523,6 +581,13 @@ export default function MeetingPage({
                 muted
                 className="local-video"
               />
+              <div className="video-stats">
+                {(() => {
+                  const stats = videoStats.get(`${userId}_screen`);
+                  if (!stats || !stats.frameRate) return null;
+                  return `${stats.frameRate.toFixed(0)}fps`;
+                })()}
+              </div>
               <div className="video-label">{userName} (我)</div>
               <div className="screen-shared">共享中</div>
               <button
@@ -550,6 +615,7 @@ export default function MeetingPage({
                   if (el) {
                     videoElementsRef.current.set(stream.streamID, el);
                     zegoService.playStream(stream.streamID, el);
+                    updateVideoStats(stream.streamID, el);
                   } else {
                     videoElementsRef.current.delete(stream.streamID);
                   }
@@ -558,6 +624,13 @@ export default function MeetingPage({
                 playsInline
                 className="remote-video"
               />
+              <div className="video-stats">
+                {(() => {
+                  const stats = videoStats.get(stream.streamID);
+                  if (!stats || !stats.frameRate) return null;
+                  return `${stats.frameRate.toFixed(0)}fps`;
+                })()}
+              </div>
               <div className="video-label">{stream.userName}</div>
               <div className="screen-shared">共享中</div>
               <button
